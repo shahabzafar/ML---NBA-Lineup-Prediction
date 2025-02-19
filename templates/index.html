@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>NBA Lineup Predictor (2007-2015)</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            padding: 20px;
+            background-color: #f8f9fa;
+        }
+        .prediction-card {
+            margin-top: 20px;
+            background-color: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .player-row {
+            margin-bottom: 10px;
+        }
+        .confidence-bar {
+            height: 20px;
+            background-color: #007bff;
+            border-radius: 10px;
+            transition: width 0.3s ease;
+        }
+        .team-section {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .select-wrapper {
+            position: relative;
+            width: 100%;
+            margin-bottom: 10px;
+        }
+        
+        .select-wrapper:after {
+            content: '▼';
+            font-size: 12px;
+            color: #666;
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            pointer-events: none;
+        }
+        
+        select {
+            appearance: none;
+            width: 100%;
+            padding: 8px 30px 8px 10px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            background-color: white;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="mb-4">NBA Lineup Predictor (2007-2015)</h1>
+        
+        <div class="row">
+            <div class="col-md-6">
+                <!-- Season Selection -->
+                <div class="team-section">
+                    <div class="form-group mb-3">
+                        <label for="season">Select Season:</label>
+                        <div class="select-wrapper">
+                            <select class="form-control" id="season" onchange="updateTeams()">
+                                <option value="">Select a season...</option>
+                                <option value="2007">2007-08</option>
+                                <option value="2008">2008-09</option>
+                                <option value="2009">2009-10</option>
+                                <option value="2010">2010-11</option>
+                                <option value="2011">2011-12</option>
+                                <option value="2012">2012-13</option>
+                                <option value="2013">2013-14</option>
+                                <option value="2014">2014-15</option>
+                                <option value="2015">2015-16</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Home Team Section -->
+                <div class="team-section">
+                    <h3>Home Team</h3>
+                    <div class="form-group mb-3">
+                        <label for="home_team">Select Home Team:</label>
+                        <div class="select-wrapper">
+                            <select class="form-control" id="home_team" onchange="getHomePlayers()">
+                                <option value="">Select a team...</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group mb-3">
+                        <label>Select 4 Home Players:</label>
+                        <div class="select-wrapper">
+                            <select class="form-control" id="home_player1"></select>
+                        </div>
+                        <div class="select-wrapper">
+                            <select class="form-control" id="home_player2"></select>
+                        </div>
+                        <div class="select-wrapper">
+                            <select class="form-control" id="home_player3"></select>
+                        </div>
+                        <div class="select-wrapper">
+                            <select class="form-control" id="home_player4"></select>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Away Team Section -->
+                <div class="team-section">
+                    <h3>Away Team</h3>
+                    <div class="form-group mb-3">
+                        <label for="away_team">Select Away Team:</label>
+                        <div class="select-wrapper">
+                            <select class="form-control" id="away_team" onchange="getAwayPlayers()">
+                                <option value="">Select a team...</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group mb-3">
+                        <label>Select 5 Away Players:</label>
+                        <div class="select-wrapper">
+                            <select class="form-control" id="away_player1"></select>
+                        </div>
+                        <div class="select-wrapper">
+                            <select class="form-control" id="away_player2"></select>
+                        </div>
+                        <div class="select-wrapper">
+                            <select class="form-control" id="away_player3"></select>
+                        </div>
+                        <div class="select-wrapper">
+                            <select class="form-control" id="away_player4"></select>
+                        </div>
+                        <div class="select-wrapper">
+                            <select class="form-control" id="away_player5"></select>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-group mb-3">
+                    <label for="gameTime">Game Time (minutes):</label>
+                    <input type="number" class="form-control" id="gameTime" min="0" max="48" value="0">
+                </div>
+                
+                <button class="btn btn-primary" onclick="predict()">Predict Fifth Player</button>
+            </div>
+            
+            <div class="col-md-6">
+                <div class="prediction-card" id="predictions" style="display: none;">
+                    <h3>Top 10 Recommended Players</h3>
+                    <div id="predictionResults"></div>
+                    <div id="reasoning" class="mt-3"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function updateTeams() {
+            const season = document.getElementById('season').value;
+            if (!season) return;
+            
+            console.log('Fetching teams for season:', season);
+            const response = await fetch(`/get_teams/${season}`);
+            const teams = await response.json();
+            
+            ['home_team', 'away_team'].forEach(teamId => {
+                const select = document.getElementById(teamId);
+                select.innerHTML = '<option value="">Select a team...</option>' +
+                    teams.map(team => `<option value="${team}">${team}</option>`).join('');
+            });
+            
+            // Clear player selections
+            ['1', '2', '3', '4'].forEach(num => {
+                document.getElementById(`home_player${num}`).innerHTML = '<option value="">Select a player...</option>';
+            });
+            ['1', '2', '3', '4', '5'].forEach(num => {
+                document.getElementById(`away_player${num}`).innerHTML = '<option value="">Select a player...</option>';
+            });
+        }
+
+        async function getHomePlayers() {
+            const season = document.getElementById('season').value;
+            const team = document.getElementById('home_team').value;
+            if (!season || !team) return;
+            
+            console.log('Fetching home players for:', season, team);
+            const response = await fetch(`/get_players/${season}/${team}`);
+            const players = await response.json();
+            
+            ['1', '2', '3', '4'].forEach(num => {
+                const select = document.getElementById(`home_player${num}`);
+                select.innerHTML = '<option value="">Select a player...</option>' +
+                    players.map(player => `<option value="${player}">${player}</option>`).join('');
+            });
+        }
+        
+        async function getAwayPlayers() {
+            const season = document.getElementById('season').value;
+            const team = document.getElementById('away_team').value;
+            if (!season || !team) return;
+            
+            console.log('Fetching away players for:', season, team);
+            const response = await fetch(`/get_players/${season}/${team}`);
+            const players = await response.json();
+            
+            ['1', '2', '3', '4', '5'].forEach(num => {
+                const select = document.getElementById(`away_player${num}`);
+                select.innerHTML = '<option value="">Select a player...</option>' +
+                    players.map(player => `<option value="${player}">${player}</option>`).join('');
+            });
+        }
+        
+        async function predict() {
+            const season = document.getElementById('season').value;
+            const home_team = document.getElementById('home_team').value;
+            const away_team = document.getElementById('away_team').value;
+            const home_players = [
+                document.getElementById('home_player1').value,
+                document.getElementById('home_player2').value,
+                document.getElementById('home_player3').value,
+                document.getElementById('home_player4').value
+            ];
+            const away_players = [
+                document.getElementById('away_player1').value,
+                document.getElementById('away_player2').value,
+                document.getElementById('away_player3').value,
+                document.getElementById('away_player4').value,
+                document.getElementById('away_player5').value
+            ];
+            const gameTime = document.getElementById('gameTime').value;
+            
+            if (!season || !home_team || !away_team || 
+                home_players.includes('') || away_players.includes('') || !gameTime) {
+                alert('Please fill in all fields');
+                return;
+            }
+            
+            try {
+                console.log('Sending prediction request with data:', {
+                    season, home_team, away_team, home_players, away_players, gameTime
+                });
+                
+                const response = await fetch('/predict', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        season,
+                        home_team,
+                        away_team,
+                        home_players,
+                        away_players,
+                        gameTime: parseFloat(gameTime)
+                    })
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+                }
+                
+                const result = await response.json();
+                console.log('Received prediction result:', result);
+                
+                const predictionsDiv = document.getElementById('predictions');
+                predictionsDiv.style.display = 'block';
+                
+                const predictionResults = document.getElementById('predictionResults');
+                if (result.predictions && result.predictions.length > 0) {
+                    predictionResults.innerHTML = result.predictions
+                        .map((pred, i) => `
+                            <div class="player-row">
+                                <div class="d-flex justify-content-between">
+                                    <span>${i + 1}. ${pred.player}</span>
+                                    <span>${pred.confidence}</span>
+                                </div>
+                                <div class="confidence-bar" style="width: ${pred.confidence}"></div>
+                            </div>
+                        `).join('');
+                } else {
+                    predictionResults.innerHTML = '<p>No predictions available</p>';
+                }
+                
+                const reasoningDiv = document.getElementById('reasoning');
+                if (result.reasoning) {
+                    reasoningDiv.innerHTML = `
+                        <h4>Prediction Reasoning:</h4>
+                        <p>${result.reasoning}</p>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error during prediction:', error);
+                alert(error.message || 'Error making prediction. Please check the console for details.');
+            }
+        }
+    </script>
+</body>
+</html> 
