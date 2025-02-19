@@ -119,20 +119,47 @@ def predict():
         # Get the predicted player and their stats
         player, confidence = list(predictions.items())[0]
         
-        # Generate meaningful reasoning
+        # Get current lineup positions
         positions = predictor.position_generator.get_positions(home_players)
-        current_formation = (
-            f"{positions.count('G')} Guards, "
-            f"{positions.count('F')} Forwards, "
-            f"{positions.count('C')} Centers"
-        )
+        num_guards = positions.count('G')
+        num_forwards = positions.count('F')
+        num_centers = positions.count('C')
+        
+        # Get predicted player's position
+        predicted_pos = predictor.position_generator.get_player_position(player)
+        
+        # Generate position-based reasoning
+        position_need = ""
+        if num_guards < 2:
+            position_need = "need for backcourt presence"
+        elif num_centers == 0:
+            position_need = "need for a center"
+        elif num_forwards < 2:
+            position_need = "need for frontcourt strength"
+        
+        # Calculate chemistry score
+        chemistry_score = predictor.chemistry_analyzer.calculate_chemistry(home_players)
+        chemistry_rating = "excellent" if chemistry_score > 0.8 else \
+                         "good" if chemistry_score > 0.6 else \
+                         "average" if chemistry_score > 0.4 else "below average"
+        
+        # Generate game situation context
+        game_context = ""
+        if game_time < 6:
+            game_context = "critical late-game situation"
+        elif game_time < 24:
+            game_context = "key rotation period"
+        else:
+            game_context = "standard lineup adjustment"
         
         reasoning = (
-            f"Selected {player} (confidence: {confidence:.1%}) based on:\n"
-            f"• Current formation: {current_formation}\n"
-            f"• Team chemistry score: {predictor.chemistry_analyzer.calculate_chemistry(home_players):.2f}\n"
-            f"• Matchup against {away_team}\n"
-            f"• {season} season performance data"
+            f"Selected {player} ({predicted_pos}) with {confidence:.1%} confidence based on:\n\n"
+            f"• Current Formation: {num_guards}G-{num_forwards}F-{num_centers}C "
+            f"({position_need if position_need else 'balanced lineup'})\n"
+            f"• Team Chemistry: {chemistry_rating} ({chemistry_score:.2f}) with current lineup\n"
+            f"• Game Situation: {game_context} at {game_time} minutes\n"
+            f"• Matchup Analysis: {home_team} vs {away_team} in {season} season\n"
+            f"• Historical Performance: Based on past successful lineups and player combinations"
         )
         
         return jsonify({
