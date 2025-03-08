@@ -58,6 +58,37 @@
             background-color: white;
             cursor: pointer;
         }
+        
+        .prediction-reasoning {
+            margin-top: 20px;
+        }
+        
+        .reasoning-item {
+            margin-bottom: 12px;
+            padding-left: 24px;
+            position: relative;
+            line-height: 1.5;
+        }
+        
+        .reasoning-item:before {
+            content: "•";
+            position: absolute;
+            left: 8px;
+            color: #007bff;
+            font-weight: bold;
+        }
+        
+        .reasoning-label {
+            font-weight: 700;
+            color: #2c3e50;
+            margin-right: 8px;
+            display: inline-block;
+            min-width: 140px;
+        }
+        
+        .reasoning-value {
+            color: #34495e;
+        }
     </style>
 </head>
 <body>
@@ -160,33 +191,122 @@
                 <div class="prediction-card" id="predictions" style="display: none;">
                     <h3>Optimal Fifth Player Prediction</h3>
                     <div id="predictionResults"></div>
-                    <div id="reasoning" class="mt-3"></div>
+                    
+                    <div class="prediction-reasoning">
+                        <h4>Prediction Reasoning:</h4>
+                        <div id="reasoning" class="mt-3"></div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
     <script>
+        // Function to update teams based on selected season
         async function updateTeams() {
             const season = document.getElementById('season').value;
             if (!season) return;
             
-            console.log('Fetching teams for season:', season);
-            const response = await fetch(`/get_teams/${season}`);
-            const teams = await response.json();
+            try {
+                // Get teams for the selected season
+                const response = await fetch(`/get_teams/${season}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const teams = await response.json();
+                
+                // Update home team dropdown
+                const homeTeamSelect = document.getElementById('home_team');
+                homeTeamSelect.innerHTML = '<option value="">Select a team...</option>';
+                teams.forEach(team => {
+                    const option = document.createElement('option');
+                    option.value = team;
+                    option.textContent = team;
+                    homeTeamSelect.appendChild(option);
+                });
+                
+                // Update away team dropdown
+                const awayTeamSelect = document.getElementById('away_team');
+                awayTeamSelect.innerHTML = '<option value="">Select a team...</option>';
+                teams.forEach(team => {
+                    const option = document.createElement('option');
+                    option.value = team;
+                    option.textContent = team;
+                    awayTeamSelect.appendChild(option);
+                });
+                
+                // Clear player selections
+                clearPlayerSelections();
+                
+            } catch (error) {
+                console.error('Error updating teams:', error);
+            }
+        }
+
+        // Function to clear player selections
+        function clearPlayerSelections() {
+            // Clear home players
+            for (let i = 1; i <= 4; i++) {
+                const select = document.getElementById(`home_player${i}`);
+                if (select) {
+                    select.innerHTML = '<option value="">Select a player...</option>';
+                }
+            }
             
-            ['home_team', 'away_team'].forEach(teamId => {
-                const select = document.getElementById(teamId);
-                select.innerHTML = '<option value="">Select a team...</option>' +
-                    teams.map(team => `<option value="${team}">${team}</option>`).join('');
-            });
+            // Clear away players
+            for (let i = 1; i <= 5; i++) {
+                const select = document.getElementById(`away_player${i}`);
+                if (select) {
+                    select.innerHTML = '<option value="">Select a player...</option>';
+                }
+            }
+        }
+
+        // Add event listener for season change
+        document.addEventListener('DOMContentLoaded', () => {
+            const seasonSelect = document.getElementById('season');
+            seasonSelect.addEventListener('change', updateTeams);
             
-            // Clear player selections
-            ['1', '2', '3', '4'].forEach(num => {
-                document.getElementById(`home_player${num}`).innerHTML = '<option value="">Select a player...</option>';
+            // Initial load if season is pre-selected
+            if (seasonSelect.value) {
+                updateTeams();
+            }
+        });
+
+        // Keep our new player selection logic
+        function updatePlayerDropdowns(playerSelects, allPlayers, changedSelect = null) {
+            // Get all currently selected players
+            const selectedPlayers = new Set();
+            playerSelects.forEach(select => {
+                if (select.value && select !== changedSelect) {
+                    selectedPlayers.add(select.value);
+                }
             });
-            ['1', '2', '3', '4', '5'].forEach(num => {
-                document.getElementById(`away_player${num}`).innerHTML = '<option value="">Select a player...</option>';
+
+            // Update each dropdown
+            playerSelects.forEach(select => {
+                const currentValue = select.value;
+                
+                // If this is the dropdown that changed, keep its value
+                if (select === changedSelect) {
+                    selectedPlayers.add(currentValue);
+                }
+                
+                // Create new options
+                const options = ['<option value="">Select a player...</option>`'];
+                
+                allPlayers.forEach(player => {
+                    // Only add player if it's either:
+                    // 1. The currently selected player for this dropdown, or
+                    // 2. Not selected in any other dropdown
+                    if (player === currentValue || !selectedPlayers.has(player)) {
+                        options.push(`<option value="${player}" 
+                            ${player === currentValue ? 'selected' : ''}>${player}</option>`);
+                    }
+                });
+                
+                // Update dropdown options
+                select.innerHTML = options.join('');
             });
         }
 
@@ -195,15 +315,52 @@
             const team = document.getElementById('home_team').value;
             if (!season || !team) return;
             
-            console.log('Fetching home players for:', season, team);
-            const response = await fetch(`/get_players/${season}/${team}`);
-            const players = await response.json();
-            
-            ['1', '2', '3', '4'].forEach(num => {
-                const select = document.getElementById(`home_player${num}`);
-                select.innerHTML = '<option value="">Select a player...</option>' +
-                    players.map(player => `<option value="${player}">${player}</option>`).join('');
-            });
+            try {
+                const response = await fetch(`/get_players/${season}/${team}`);
+                const players = await response.json();
+                
+                // Get all home player select elements
+                const homeSelects = Array.from({ length: 4 }, (_, i) => 
+                    document.getElementById(`home_player${i + 1}`)
+                );
+                
+                // Initialize dropdowns
+                homeSelects.forEach(select => {
+                    // Clear existing options and event listeners
+                    select.innerHTML = '<option value="">Select a player...</option>';
+                    
+                    // Remove old event listeners by cloning
+                    const newSelect = select.cloneNode(true);
+                    select.parentNode.replaceChild(newSelect, select);
+                });
+                
+                // Get fresh references after replacing elements
+                const freshHomeSelects = Array.from({ length: 4 }, (_, i) => 
+                    document.getElementById(`home_player${i + 1}`)
+                );
+                
+                // Add options and event listeners
+                freshHomeSelects.forEach(select => {
+                    // Add all players initially
+                    players.forEach(player => {
+                        const option = document.createElement('option');
+                        option.value = player;
+                        option.textContent = player;
+                        select.appendChild(option);
+                    });
+                    
+                    // Add change event listener
+                    select.addEventListener('change', () => {
+                        updatePlayerDropdowns(freshHomeSelects, players, select);
+                    });
+                });
+                
+                // Initial update to handle any pre-selected values
+                updatePlayerDropdowns(freshHomeSelects, players);
+                
+            } catch (error) {
+                console.error('Error fetching home players:', error);
+            }
         }
         
         async function getAwayPlayers() {
@@ -211,15 +368,52 @@
             const team = document.getElementById('away_team').value;
             if (!season || !team) return;
             
-            console.log('Fetching away players for:', season, team);
-            const response = await fetch(`/get_players/${season}/${team}`);
-            const players = await response.json();
-            
-            ['1', '2', '3', '4', '5'].forEach(num => {
-                const select = document.getElementById(`away_player${num}`);
-                select.innerHTML = '<option value="">Select a player...</option>' +
-                    players.map(player => `<option value="${player}">${player}</option>`).join('');
-            });
+            try {
+                const response = await fetch(`/get_players/${season}/${team}`);
+                const players = await response.json();
+                
+                // Get all away player select elements
+                const awaySelects = Array.from({ length: 5 }, (_, i) => 
+                    document.getElementById(`away_player${i + 1}`)
+                );
+                
+                // Initialize dropdowns
+                awaySelects.forEach(select => {
+                    // Clear existing options and event listeners
+                    select.innerHTML = '<option value="">Select a player...</option>';
+                    
+                    // Remove old event listeners by cloning
+                    const newSelect = select.cloneNode(true);
+                    select.parentNode.replaceChild(newSelect, select);
+                });
+                
+                // Get fresh references after replacing elements
+                const freshAwaySelects = Array.from({ length: 5 }, (_, i) => 
+                    document.getElementById(`away_player${i + 1}`)
+                );
+                
+                // Add options and event listeners
+                freshAwaySelects.forEach(select => {
+                    // Add all players initially
+                    players.forEach(player => {
+                        const option = document.createElement('option');
+                        option.value = player;
+                        option.textContent = player;
+                        select.appendChild(option);
+                    });
+                    
+                    // Add change event listener
+                    select.addEventListener('change', () => {
+                        updatePlayerDropdowns(freshAwaySelects, players, select);
+                    });
+                });
+                
+                // Initial update to handle any pre-selected values
+                updatePlayerDropdowns(freshAwaySelects, players);
+                
+            } catch (error) {
+                console.error('Error fetching away players:', error);
+            }
         }
         
         async function predict() {
@@ -296,10 +490,21 @@
                 
                 const reasoningDiv = document.getElementById('reasoning');
                 if (result.reasoning) {
-                    reasoningDiv.innerHTML = `
-                        <h4>Prediction Reasoning:</h4>
-                        <p>${result.reasoning}</p>
-                    `;
+                    // Split the reasoning into sections
+                    const reasoningSections = result.reasoning.split('\n');
+                    
+                    // Create formatted HTML with bold labels
+                    reasoningDiv.innerHTML = reasoningSections.map(section => {
+                        if (section.includes(':')) {
+                            const [label, value] = section.split(':');
+                            return `
+                                <div class="reasoning-item">
+                                    <span class="reasoning-label"><strong>${label.replace('•', '').trim()}</strong>:</span>
+                                    <span class="reasoning-value">${value.trim()}</span>
+                                </div>`;
+                        }
+                        return '';
+                    }).join('');
                 }
             } catch (error) {
                 console.error('Error during prediction:', error);

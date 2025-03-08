@@ -60,12 +60,14 @@ def home():
 
 @app.route('/get_teams/<season>')
 def get_teams(season):
-    # Filter data for the selected season
-    season_data = data[data['season'] == int(season)]
-    home_teams = sorted(season_data['home_team'].unique())
-    away_teams = sorted(season_data['away_team'].unique())
-    teams = sorted(list(set(home_teams + away_teams)))
-    return jsonify(teams)
+    try:
+        # Filter data for the selected season
+        season_data = data[data['season'] == int(season)]
+        teams = sorted(list(set(season_data['home_team'].unique()) | set(season_data['away_team'].unique())))
+        return jsonify(teams)
+    except Exception as e:
+        print(f"Error in get_teams: {str(e)}")
+        return jsonify([]), 500
 
 @app.route('/get_players/<season>/<team>')
 def get_players(season, team):
@@ -153,13 +155,22 @@ def predict():
             game_context = "standard lineup adjustment"
         
         reasoning = (
-            f"Selected {player} ({predicted_pos}) with {confidence:.1%} confidence based on:\n\n"
-            f"• Current Formation: {num_guards}G-{num_forwards}F-{num_centers}C "
-            f"({position_need if position_need else 'balanced lineup'})\n"
-            f"• Team Chemistry: {chemistry_rating} ({chemistry_score:.2f}) with current lineup\n"
-            f"• Game Situation: {game_context} at {game_time} minutes\n"
-            f"• Matchup Analysis: {home_team} vs {away_team} in {season} season\n"
-            f"• Historical Performance: Based on past successful lineups and player combinations"
+            f"Selected Player\n"
+            f"Player Name: {player} ({predicted_pos}) with {confidence:.1%} confidence\n\n"
+            f"Current Formation\n"
+            f"Lineup Structure: {num_guards}G-{num_forwards}F-{num_centers}C\n"
+            f"Position Need: {position_need if position_need else 'Balanced lineup'}\n\n"
+            f"Team Chemistry\n"
+            f"Chemistry Rating: {chemistry_rating}\n"
+            f"Chemistry Score: {chemistry_score:.2f} with current lineup\n\n"
+            f"Game Context\n"
+            f"Time Situation: {game_context}\n"
+            f"Game Time: {game_time} minutes\n\n"
+            f"Matchup Information\n"
+            f"Teams: {home_team} vs {away_team}\n"
+            f"Season: {season}\n\n"
+            f"Historical Data\n"
+            f"Analysis: Based on past successful lineups and player combinations"
         )
         
         return jsonify({
