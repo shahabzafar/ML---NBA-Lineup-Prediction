@@ -115,68 +115,104 @@ def predict():
         if not predictions:
             return jsonify({
                 'predictions': [],
-                'reasoning': f'No valid fifth player found for {home_team} lineup.'
+                'reasoning': 'No valid fifth player found.'
             })
         
-        # Get the predicted player and their stats
+        # Get the predicted player and confidence
         player, confidence = list(predictions.items())[0]
         
-        # Get current lineup positions
-        positions = predictor.position_generator.get_positions(home_players)
-        num_guards = positions.count('G')
-        num_forwards = positions.count('F')
-        num_centers = positions.count('C')
+        # Ensure confidence is capped at 100%
+        confidence = min(100.0, confidence)
         
-        # Get predicted player's position
+        # Get current lineup positions and structure
+        current_lineup_positions = [predictor.position_generator.get_player_position(p) for p in home_players]
+        num_guards = current_lineup_positions.count('G')
+        num_forwards = current_lineup_positions.count('F')
+        num_centers = current_lineup_positions.count('C')
         predicted_pos = predictor.position_generator.get_player_position(player)
         
-        # Generate position-based reasoning
-        position_need = ""
-        if num_guards < 2:
-            position_need = "need for backcourt presence"
+        # Calculate lineup structure
+        lineup_balance = (
+            "Guard-heavy" if num_guards > 2 else
+            "Forward-heavy" if num_forwards > 2 else
+            "Center-heavy" if num_centers > 1 else
+            "Balanced" if num_guards == 2 and num_forwards == 2 else
+            "Mixed"
+        )
+        lineup_structure = f"{num_guards}G-{num_forwards}F-{num_centers}C ({lineup_balance})"
+        
+        # Dynamic position need based on current lineup
+        if num_guards == 0:
+            position_need = "Critical need for backcourt presence - no guards in lineup"
+        elif num_centers == 0 and num_forwards < 2:
+            position_need = "Critical need for frontcourt presence - lacking size and interior presence"
+        elif num_guards == 1:
+            position_need = "Need for additional backcourt playmaker/shooter"
+        elif num_forwards == 0:
+            position_need = "Need for wing players - lacking forward presence"
         elif num_centers == 0:
-            position_need = "need for a center"
-        elif num_forwards < 2:
-            position_need = "need for frontcourt strength"
-        
-        # Calculate chemistry score
-        chemistry_score = predictor.chemistry_analyzer.calculate_chemistry(home_players)
-        chemistry_rating = "excellent" if chemistry_score > 0.8 else \
-                         "good" if chemistry_score > 0.6 else \
-                         "average" if chemistry_score > 0.4 else "below average"
-        
-        # Generate game situation context
-        game_context = ""
-        if game_time < 6:
-            game_context = "critical late-game situation"
-        elif game_time < 24:
-            game_context = "key rotation period"
+            position_need = "Need for interior presence - no true center"
         else:
-            game_context = "standard lineup adjustment"
+            position_need = "Balanced lineup - seeking best available player"
+
+        # Calculate chemistry scores
+        new_lineup = home_players + [player]
+        chemistry_score = predictor.chemistry_analyzer.calculate_chemistry(new_lineup)
+        current_chemistry = predictor.chemistry_analyzer.calculate_chemistry(home_players)
         
+        # Dynamic chemistry impact assessment
+        chemistry_diff = chemistry_score - current_chemistry
+        chemistry_impact = (
+            "Significant improvement" if chemistry_diff > 0.2 else
+            "Moderate improvement" if chemistry_diff > 0.1 else
+            "Slight improvement" if chemistry_diff > 0 else
+            "Slight decrease" if chemistry_diff < 0 else
+            "No significant change"
+        )
+        
+        # Format chemistry score with proper parentheses
+        chemistry_display = f"{chemistry_score:.2f} with predicted lineup (Current: {current_chemistry:.2f})"
+        
+        # Confidence assessment
+        confidence_assessment = (
+            "Very High" if confidence > 75 else
+            "High" if confidence > 50 else
+            "Moderate" if confidence > 25 else
+            "Low" if confidence > 10 else
+            "Very Low"
+        )
+        
+        # Format analysis text to prevent wrapping
+        analysis_text = f"Based on {len(predictor.data[(predictor.data['season'] == int(season)) & ((predictor.data['home_team'] == home_team) | (predictor.data['away_team'] == home_team))])} historical lineup combinations for {home_team} in {season}"
+        
+        # Determine game context based on game time
+        game_context = (
+            "Early game rotation" if game_time < 12 else
+            "Mid-first half adjustment" if game_time < 24 else
+            "Late first half strategy" if game_time < 36 else
+            "Third quarter adjustment" if game_time < 48 else
+            "Critical end-game situation"
+        )
+        
+        # Generate reasoning text with fixed formatting
         reasoning = (
-            f"Selected Player\n"
-            f"Player Name: {player} ({predicted_pos}) with {confidence:.1%} confidence\n\n"
-            f"Current Formation\n"
-            f"Lineup Structure: {num_guards}G-{num_forwards}F-{num_centers}C\n"
-            f"Position Need: {position_need if position_need else 'Balanced lineup'}\n\n"
-            f"Team Chemistry\n"
-            f"Chemistry Rating: {chemistry_rating}\n"
-            f"Chemistry Score: {chemistry_score:.2f} with current lineup\n\n"
-            f"Game Context\n"
-            f"Time Situation: {game_context}\n"
-            f"Game Time: {game_time} minutes\n\n"
-            f"Matchup Information\n"
-            f"Teams: {home_team} vs {away_team}\n"
-            f"Season: {season}\n\n"
-            f"Historical Data\n"
-            f"Analysis: Based on past successful lineups and player combinations"
+            f"Player Name: {player} ({predicted_pos}) with {confidence:.1f}% confidence\n"
+            f"Confidence Level: {confidence_assessment} - {confidence:.1f}% probability based on historical data\n"
+            f"Lineup Structure: {lineup_structure}\n"
+            f"Position Need: {position_need}\n"
+            f"Team Chemistry: {chemistry_impact}\n"
+            f"Chemistry Score: {chemistry_display}\n"
+            f"Game Context: {game_context}\n"
+            f"Game Time: {game_time} minutes\n"
+            f"Matchup: {home_team} vs {away_team}\n"
+            f"Season: {season}\n"
+            f"Analysis: {analysis_text}"
         )
         
         return jsonify({
             'predictions': [{
                 'player': player,
-                'confidence': f"{confidence:.1%}"
+                'confidence': f"{confidence:.1f}%"
             }],
             'reasoning': reasoning
         })

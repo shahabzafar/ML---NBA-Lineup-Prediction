@@ -29,4 +29,16 @@ class TimeAnalyzer:
     
     def get_time_based_probabilities(self, time_bin: str) -> Dict[str, float]:
         """Get player probabilities for a given time bin"""
-        return self.time_patterns.get(time_bin, {}) 
+        if time_bin not in self.time_patterns:
+            # Create more granular time bins
+            minute = float(time_bin.split('-')[0])
+            if minute >= 40:
+                return self.time_patterns.get('40-45', {})
+            elif minute >= 30:
+                return self.time_patterns.get('30-35', {})
+            elif minute >= 20:
+                return self.time_patterns.get('20-25', {})
+            else:
+                return self.time_patterns.get('0-5', {})
+        
+        return self.time_patterns[time_bin] 

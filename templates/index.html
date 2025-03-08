@@ -23,6 +23,7 @@
             background-color: #007bff;
             border-radius: 10px;
             transition: width 0.3s ease;
+            max-width: 100%;
         }
         .team-section {
             background-color: white;
@@ -68,6 +69,10 @@
             padding-left: 24px;
             position: relative;
             line-height: 1.5;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: flex-start;
+            width: 100%;
         }
         
         .reasoning-item:before {
@@ -81,13 +86,55 @@
         .reasoning-label {
             font-weight: 700;
             color: #2c3e50;
-            margin-right: 8px;
-            display: inline-block;
-            min-width: 140px;
+            margin-right: 16px;
+            flex: 0 0 200px;
+            white-space: nowrap;
         }
         
         .reasoning-value {
             color: #34495e;
+            flex: 1;
+            padding-right: 40px;
+            min-width: 300px;
+            word-wrap: break-word;
+            white-space: normal;
+        }
+        
+        .confidence-container {
+            width: 100%;
+            background-color: #f0f0f0;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        
+        .player-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            margin-bottom: 8px;
+        }
+        
+        .confidence-value {
+            margin-left: 16px;
+            white-space: nowrap;
+        }
+        
+        #predictions {
+            width: 100%;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .prediction-container {
+            width: 100%;
+            margin: 0 auto;
+        }
+        
+        .reasoning-value.long-text {
+            padding-top: 4px;
+            padding-bottom: 4px;
         }
     </style>
 </head>
@@ -188,13 +235,12 @@
             </div>
             
             <div class="col-md-6">
-                <div class="prediction-card" id="predictions" style="display: none;">
-                    <h3>Optimal Fifth Player Prediction</h3>
-                    <div id="predictionResults"></div>
-                    
-                    <div class="prediction-reasoning">
-                        <h4>Prediction Reasoning:</h4>
-                        <div id="reasoning" class="mt-3"></div>
+                <div id="predictions" style="display: none;">
+                    <div class="prediction-container">
+                        <h2>Optimal Fifth Player Prediction</h2>
+                        <div id="predictionResults"></div>
+                        <h3>Prediction Reasoning:</h3>
+                        <div id="reasoning"></div>
                     </div>
                 </div>
             </div>
@@ -475,32 +521,50 @@
                 const predictionResults = document.getElementById('predictionResults');
                 if (result.predictions && result.predictions.length > 0) {
                     predictionResults.innerHTML = result.predictions
-                        .map((pred, i) => `
-                            <div class="player-row">
-                                <div class="d-flex justify-content-between">
-                                    <span>${i + 1}. ${pred.player}</span>
-                                    <span>${pred.confidence}</span>
+                        .map((pred, i) => {
+                            // Ensure confidence is a number and capped at 100%
+                            const confidence = Math.min(parseFloat(pred.confidence), 100);
+                            return `
+                                <div class="player-row">
+                                    <div class="player-info">
+                                        <span>${i + 1}. ${pred.player}</span>
+                                        <span class="confidence-value">${confidence.toFixed(1)}%</span>
+                                    </div>
+                                    <div class="confidence-container">
+                                        <div class="confidence-bar" style="width: ${confidence}%"></div>
+                                    </div>
                                 </div>
-                                <div class="confidence-bar" style="width: ${pred.confidence}"></div>
-                            </div>
-                        `).join('');
+                            `;
+                        }).join('');
                 } else {
                     predictionResults.innerHTML = '<p>No predictions available</p>';
                 }
                 
                 const reasoningDiv = document.getElementById('reasoning');
                 if (result.reasoning) {
-                    // Split the reasoning into sections
-                    const reasoningSections = result.reasoning.split('\n');
-                    
-                    // Create formatted HTML with bold labels
-                    reasoningDiv.innerHTML = reasoningSections.map(section => {
-                        if (section.includes(':')) {
-                            const [label, value] = section.split(':');
+                    const reasoningLines = result.reasoning.split('\n').filter(line => line.trim());
+                    reasoningDiv.innerHTML = reasoningLines.map(line => {
+                        if (line.includes(':')) {
+                            const [label, value] = line.split(':').map(part => part.trim());
+                            
+                            // Handle special cases for proper formatting
+                            let formattedValue = value;
+                            
+                            // Fix Chemistry Score parentheses
+                            if (label === 'Chemistry Score') {
+                                if (!value.includes(')')) {
+                                    const parts = value.split('(');
+                                    formattedValue = `${parts[0].trim()} (${parts[1].trim()})`;
+                                }
+                            }
+                            
+                            // Add specific class for Analysis
+                            const valueClass = label === 'Analysis' ? 'reasoning-value analysis' : 'reasoning-value';
+                            
                             return `
                                 <div class="reasoning-item">
-                                    <span class="reasoning-label"><strong>${label.replace('•', '').trim()}</strong>:</span>
-                                    <span class="reasoning-value">${value.trim()}</span>
+                                    <span class="reasoning-label"><strong>${label}</strong>:</span>
+                                    <span class="${valueClass}">${formattedValue}</span>
                                 </div>`;
                         }
                         return '';

@@ -24,12 +24,21 @@ class LineupPredictor:
         try:
             # Get valid players for this team and season
             valid_players = self.get_team_players(home_team, season)
-            
-            # Remove current players from valid players
             valid_players = [p for p in valid_players if p not in current_players]
             
             if not valid_players:
                 return {}
+            
+            # Calculate position counts and chemistry
+            positions = self.position_generator.get_positions(current_players)
+            num_guards = positions.count('G')
+            num_forwards = positions.count('F')
+            num_centers = positions.count('C')
+            chemistry_score = self.chemistry_analyzer.calculate_chemistry(current_players)
+            
+            # Get time-based probabilities
+            time_bin = f"{5 * (game_time // 5)}-{5 * (game_time // 5 + 1)}"
+            time_probs = self.time_analyzer.get_time_based_probabilities(time_bin)
             
             # Create features for prediction
             data = {
@@ -37,48 +46,78 @@ class LineupPredictor:
                 'home_team_encoded': [self.model.team_encoder.transform([home_team])[0]],
                 'away_team_encoded': [self.model.team_encoder.transform([away_team])[0]],
                 'starting_min': [game_time],
-                'home_0_encoded': [self.model.player_encoder.transform([current_players[0]])[0]],
-                'home_1_encoded': [self.model.player_encoder.transform([current_players[1]])[0]],
-                'home_2_encoded': [self.model.player_encoder.transform([current_players[2]])[0]],
-                'home_3_encoded': [self.model.player_encoder.transform([current_players[3]])[0]],
-                'away_0_encoded': [self.model.player_encoder.transform([away_players[0]])[0]],
-                'away_1_encoded': [self.model.player_encoder.transform([away_players[1]])[0]],
-                'away_2_encoded': [self.model.player_encoder.transform([away_players[2]])[0]],
-                'away_3_encoded': [self.model.player_encoder.transform([away_players[3]])[0]],
-                'away_4_encoded': [self.model.player_encoder.transform([away_players[4]])[0]],
+                'num_guards': [num_guards],
+                'num_forwards': [num_forwards],
+                'num_centers': [num_centers],
+                'chemistry_score': [chemistry_score]
             }
+            
+            # Add encoded player columns
+            for i, player in enumerate(current_players):
+                data[f'home_{i}_encoded'] = [self.model.player_encoder.transform([player])[0]]
+            for i, player in enumerate(away_players):
+                data[f'away_{i}_encoded'] = [self.model.player_encoder.transform([player])[0]]
             
             df = pd.DataFrame(data)
             
-            # Add required features
-            positions = self.position_generator.get_positions(current_players)
-            df['num_centers'] = [positions.count('C')]
-            df['num_forwards'] = [positions.count('F')]
-            df['num_guards'] = [positions.count('G')]
-            df['chemistry_score'] = [self.chemistry_analyzer.calculate_chemistry(current_players)]
-            
-            # Get predictions
-            model_probs = self.model.predict_proba(df)[0]
-            
-            # Get only the best prediction
-            player_probs = {}
-            for player in valid_players:
-                try:
-                    player_id = self.model.player_encoder.transform([player])[0]
-                    idx = list(self.model.model.classes_).index(player_id)
-                    player_probs[player] = model_probs[idx]
-                except:
-                    continue
-            
-            # Return only the highest probability player
-            if player_probs:
-                best_player = max(player_probs.items(), key=lambda x: x[1])
-                return {best_player[0]: best_player[1]}
-            return {}
+            try:
+                # Get model probabilities
+                model_probs = self.model.predict_proba(df)[0]
+                
+                # Process each valid player
+                player_probs = {}
+                total_prob = 0
+                
+                for player in valid_players:
+                    try:
+                        # Get player index in model classes
+                        player_encoded = self.model.player_encoder.transform([player])[0]
+                        if player_encoded in self.model.model.classes_:
+                            idx = list(self.model.model.classes_).index(player_encoded)
+                            base_prob = model_probs[idx]
+                            
+                            # Adjust probability based on time patterns
+                            time_factor = time_probs.get(player, 0.5)
+                            
+                            # Calculate chemistry impact
+                            test_lineup = current_players + [player]
+                            new_chemistry = self.chemistry_analyzer.calculate_chemistry(test_lineup)
+                            chemistry_impact = new_chemistry - chemistry_score
+                            
+                            # Combine factors
+                            final_prob = (
+                                base_prob * 0.4 +
+                                time_factor * 0.3 +
+                                max(0, min(1, (chemistry_impact + 1) * 0.3))
+                            )
+                            
+                            player_probs[player] = final_prob
+                            total_prob += final_prob
+                            
+                    except Exception as e:
+                        print(f"Error processing player {player}: {str(e)}")
+                        continue
+                
+                # Normalize probabilities
+                if player_probs and total_prob > 0:
+                    normalized_probs = {
+                        player: (prob / total_prob) * 100 
+                        for player, prob in player_probs.items()
+                    }
+                    
+                    # Return highest probability player
+                    best_player = max(normalized_probs.items(), key=lambda x: x[1])
+                    return {best_player[0]: min(100, best_player[1])}  # Cap at 100%
+                
+                return {}
+                
+            except Exception as e:
+                print(f"Error in probability calculation: {str(e)}")
+                return {}
             
         except Exception as e:
             print(f"Error during prediction: {str(e)}")
-            raise e
+            return {}
     
     def get_team_players(self, team: str, season: str) -> List[str]:
         """Get all players who played for a given team in a specific season"""
