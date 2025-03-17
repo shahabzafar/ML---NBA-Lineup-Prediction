@@ -1,6 +1,7 @@
 import pandas as pd
 from typing import List, Dict
 import numpy as np
+from src.player_availability import PlayerAvailability
 
 class LineupPredictor:
     def __init__(self, model, position_generator, chemistry_analyzer, time_analyzer, data=None):
@@ -9,6 +10,7 @@ class LineupPredictor:
         self.chemistry_analyzer = chemistry_analyzer
         self.time_analyzer = time_analyzer
         self.data = data  # Store the data during initialization
+        self.player_availability = PlayerAvailability()  # Add this line
     
     def predict_fifth_player(self, 
                            season: str,
@@ -120,7 +122,7 @@ class LineupPredictor:
             return {}
     
     def get_team_players(self, team: str, season: str) -> List[str]:
-        """Get all players who played for a given team in a specific season"""
+        """Get all available players who played for a given team in a specific season"""
         if self.data is None:
             return []  # Return empty list if no data available
             
@@ -141,4 +143,9 @@ class LineupPredictor:
             for col in ['away_0', 'away_1', 'away_2', 'away_3', 'away_4']:
                 players.update(team_data[team_data['away_team'] == team][col].unique())
         
-        return sorted(list(players)) 
+        all_players = sorted(list(players))
+        
+        # Filter out injured players
+        available_players = self.player_availability.get_available_players(all_players, season)
+        
+        return available_players 

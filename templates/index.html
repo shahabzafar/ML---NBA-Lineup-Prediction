@@ -136,11 +136,50 @@
             padding-top: 4px;
             padding-bottom: 4px;
         }
+        
+        .player-injured {
+            color: #dc3545;
+            text-decoration: line-through;
+        }
+        
+        .injury-badge {
+            background-color: #dc3545;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 10px;
+            margin-left: 5px;
+        }
+        
+        .injury-info {
+            margin-top: 10px;
+            padding: 8px;
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            border-radius: 4px;
+            color: #721c24;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1 class="mb-4">NBA Lineup Predictor (2007-2015)</h1>
+        
+        <nav class="navbar navbar-expand-lg navbar-light bg-light">
+          <div class="container-fluid">
+            <a class="navbar-brand" href="/">NBA Lineup Predictor</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+              <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+              <ul class="navbar-nav">
+                <li class="nav-item">
+                  <a class="nav-link" href="/evaluation">View Evaluation Results</a>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </nav>
         
         <div class="row">
             <div class="col-md-6">
@@ -245,6 +284,10 @@
                 </div>
             </div>
         </div>
+    </div>
+
+    <div id="injuryInfo" class="injury-info" style="display: none;">
+        <strong>Note:</strong> Some players are unavailable due to injuries and won't appear in the dropdown.
     </div>
 
     <script>
@@ -574,6 +617,47 @@
                 console.error('Error during prediction:', error);
                 alert(error.message || 'Error making prediction. Please check the console for details.');
             }
+        }
+
+        function loadPlayersForTeam(teamName, type) {
+            if (!teamName) return;
+            
+            const season = $('#season').val();
+            
+            $.ajax({
+                url: `/get_team_players?team=${teamName}&season=${season}`,
+                method: 'GET',
+                success: function(data) {
+                    const players = data.players;
+                    const injuredPlayers = data.injured_players || [];
+                    
+                    // Display injury info if any injured players
+                    if (injuredPlayers.length > 0) {
+                        $('#injuryInfo').show();
+                        
+                        // Create injured player list
+                        let injuredList = injuredPlayers.join(', ');
+                        $('#injuryInfo').html(`<strong>Note:</strong> The following players are unavailable due to injuries: <span class="text-danger">${injuredList}</span>`);
+                    } else {
+                        $('#injuryInfo').hide();
+                    }
+                    
+                    // Update player dropdowns
+                    const selects = $(`.${type}-player-select`);
+                    selects.each(function() {
+                        const select = $(this);
+                        select.empty();
+                        select.append('<option value="" disabled selected>Select a player...</option>');
+                        
+                        players.forEach(player => {
+                            select.append(`<option value="${player}">${player}</option>`);
+                        });
+                    });
+                },
+                error: function(xhr, status, error) {
+                    console.error(`Error loading ${type} team players:`, error);
+                }
+            });
         }
     </script>
 </body>

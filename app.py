@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, redirect
 from src.position_features import PositionFeatureGenerator
 from src.chemistry_analysis import ChemistryAnalyzer
 from src.time_analysis import TimeAnalyzer
@@ -7,6 +7,10 @@ from src.model import LineupPredictor as BaseModel
 from src.data_preprocessing import DataPreprocessor
 import pandas as pd
 import os
+import matplotlib
+matplotlib.use('Agg')  # Use Agg backend to avoid display issues
+import matplotlib.pyplot as plt
+import json
 
 app = Flask(__name__)
 
@@ -224,6 +228,101 @@ def predict():
             'predictions': [],
             'reasoning': f'Error during prediction: {str(e)}'
         }), 500
+
+@app.route('/evaluation')
+def evaluation():
+    # Load evaluation results if they exist
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    evaluation_dir = os.path.join(current_dir, 'evaluation')
+    results_path = os.path.join(evaluation_dir, 'evaluation_results.csv')
+    
+    if not os.path.exists(results_path):
+        # If results don't exist, run evaluation
+        from src.evaluate_test_data import main as evaluate_main
+        metrics = evaluate_main()
+    else:
+        # Load existing results
+        results_df = pd.read_csv(results_path)
+        
+        # Calculate overall accuracy
+        overall_accuracy = float(results_df['is_correct'].mean() * 100)
+        
+        # Count matches per year - convert to standard Python types
+        matches_per_year = results_df['season'].value_counts().sort_index()
+        matches_dict = {int(year): int(count) for year, count in matches_per_year.items()}
+        avg_matches = float(matches_per_year.mean())
+        
+        # Calculate accuracy by season - convert to standard Python types
+        season_accuracy = results_df.groupby('season')['is_correct'].mean() * 100
+        accuracy_dict = {int(year): float(acc) for year, acc in season_accuracy.items()}
+        
+        metrics = {
+            'matches_per_year': matches_dict,
+            'average_matches': avg_matches,
+            'overall_accuracy': overall_accuracy,
+            'season_accuracy': accuracy_dict
+        }
+    
+    # Prepare data for charts - use native Python types
+    matches_per_year = metrics.get('matches_per_year', {})
+    matches_years = [str(y) for y in sorted(matches_per_year.keys())]
+    matches_counts = [int(matches_per_year.get(int(y), 0)) for y in matches_years]
+    
+    season_accuracy = metrics.get('season_accuracy', {})
+    accuracy_years = [str(y) for y in sorted(season_accuracy.keys())]
+    accuracy_values = [float(season_accuracy.get(int(y), 0)) for y in accuracy_years]
+    
+    return render_template('evaluation.html',
+                          overall_accuracy=float(metrics.get('overall_accuracy', 0)),
+                          total_matches=int(sum(matches_per_year.values())),
+                          average_matches=float(metrics.get('average_matches', 0)),
+                          matches_per_year=matches_per_year,
+                          matches_years=matches_years,
+                          matches_counts=matches_counts,
+                          accuracy_years=accuracy_years,
+                          accuracy_values=accuracy_values)
+
+@app.route('/get_team_players')
+def get_team_players():
+    try:
+        team = request.args.get('team', '')
+        season = request.args.get('season', '2007')
+        
+        if not team:
+            return jsonify({'error': 'Team name is required'}), 400
+            
+        # Get available players
+        available_players = predictor.get_team_players(team, season)
+        
+        # Get injured players (for display)
+        all_players = []
+        team_data = data[data['season'] == int(season)]
+        team_rows = team_data[(team_data['home_team'] == team) | (team_data['away_team'] == team)]
+        
+        for col in ['home_0', 'home_1', 'home_2', 'home_3', 'home_4', 
+                   'away_0', 'away_1', 'away_2', 'away_3', 'away_4']:
+            if col in team_rows.columns:
+                all_players.extend(team_rows[col].unique())
+        
+        all_players = sorted(list(set([p for p in all_players if isinstance(p, str)])))
+        injured_players = [p for p in all_players if p not in available_players]
+        
+        return jsonify({
+            'players': available_players,
+            'injured_players': injured_players
+        })
+    except Exception as e:
+        print(f"Error getting team players: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/run_evaluation')
+def run_evaluation_route():
+    try:
+        from src.evaluate_test_data import main as evaluate_main
+        metrics = evaluate_main()
+        return redirect('/evaluation')
+    except Exception as e:
+        return render_template('error.html', error=str(e))
 
 if __name__ == '__main__':
     app.run(debug=True) 
