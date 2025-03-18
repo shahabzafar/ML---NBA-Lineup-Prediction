@@ -98,15 +98,26 @@ def get_players(season, team):
 @app.route('/predict', methods=['POST'])
 def predict():
     try:
-        request_data = request.json
-        season = request_data.get('season')
-        home_team = request_data['home_team']
-        away_team = request_data['away_team']
-        home_players = request_data['home_players']
-        away_players = request_data['away_players']
-        game_time = float(request_data['gameTime'])
+        # Extract data from request
+        data = request.json
+        season = data.get('season')
+        home_team = data.get('home_team')
+        away_team = data.get('away_team')
+        home_players = data.get('home_players', [])
+        away_players = data.get('away_players', [])
+        game_time = float(data.get('game_time', 15.0))
         
-        # Get prediction
+        # Validate required inputs
+        if not all([season, home_team, home_players, len(home_players) > 3]):
+            return jsonify({'error': 'Missing required fields'}), 400
+            
+        # Validate lineup has exactly 4 players
+        if len(home_players) != 4:
+            return jsonify({'error': 'Home lineup must contain exactly 4 players'}), 400
+            
+        print(f"Predicting fifth player for {home_team} - Current players: {home_players}")
+        
+        # Make prediction
         predictions = predictor.predict_fifth_player(
             season=season,
             home_team=home_team,
@@ -117,33 +128,21 @@ def predict():
         )
         
         if not predictions:
-            return jsonify({
-                'predictions': [],
-                'reasoning': 'No valid fifth player found.'
-            })
+            return jsonify({'error': 'No valid predictions could be made'}), 404
+            
+        # Get top prediction
+        player = list(predictions.keys())[0]
+        confidence = list(predictions.values())[0]
         
-        # Get the predicted player and confidence
-        player, confidence = list(predictions.items())[0]
-        
-        # Ensure confidence is capped at 100%
-        confidence = min(100.0, confidence)
-        
-        # Get current lineup positions and structure
-        current_lineup_positions = [predictor.position_generator.get_player_position(p) for p in home_players]
-        num_guards = current_lineup_positions.count('G')
-        num_forwards = current_lineup_positions.count('F')
-        num_centers = current_lineup_positions.count('C')
+        # Get position info
+        positions = predictor.position_generator.get_positions(home_players)
+        num_guards = positions.count('G')
+        num_forwards = positions.count('F')
+        num_centers = positions.count('C')
         predicted_pos = predictor.position_generator.get_player_position(player)
         
-        # Calculate lineup structure
-        lineup_balance = (
-            "Guard-heavy" if num_guards > 2 else
-            "Forward-heavy" if num_forwards > 2 else
-            "Center-heavy" if num_centers > 1 else
-            "Balanced" if num_guards == 2 and num_forwards == 2 else
-            "Mixed"
-        )
-        lineup_structure = f"{num_guards}G-{num_forwards}F-{num_centers}C ({lineup_balance})"
+        # Generate lineup structure description
+        lineup_structure = f"{num_guards}G-{num_forwards}F-{num_centers}C lineup"
         
         # Dynamic position need based on current lineup
         if num_guards == 0:

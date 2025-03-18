@@ -10,7 +10,7 @@ class LineupPredictor:
         self.chemistry_analyzer = chemistry_analyzer
         self.time_analyzer = time_analyzer
         self.data = data  # Store the data during initialization
-        self.player_availability = PlayerAvailability()  # Add this line
+        self.player_availability = PlayerAvailability()  # Track player injuries/availability
     
     def predict_fifth_player(self, 
                            season: str,

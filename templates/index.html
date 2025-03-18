@@ -1,13 +1,17 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <!-- Page title with date range -->
     <title>NBA Lineup Predictor (2007-2015)</title>
+    <!-- Bootstrap CSS for responsive styling -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
+        /* Base body styling */
         body {
             padding: 20px;
             background-color: #f8f9fa;
         }
+        /* Card styling for prediction results */
         .prediction-card {
             margin-top: 20px;
             background-color: white;
@@ -15,9 +19,11 @@
             padding: 20px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
+        /* Styling for each player prediction row */
         .player-row {
             margin-bottom: 10px;
         }
+        /* Progress bar for confidence visualization */
         .confidence-bar {
             height: 20px;
             background-color: #007bff;
@@ -25,6 +31,7 @@
             transition: width 0.3s ease;
             max-width: 100%;
         }
+        /* Section styling for team selection */
         .team-section {
             background-color: white;
             padding: 20px;
@@ -33,12 +40,14 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
         
+        /* Custom dropdown styling */
         .select-wrapper {
             position: relative;
             width: 100%;
             margin-bottom: 10px;
         }
         
+        /* Custom dropdown arrow */
         .select-wrapper:after {
             content: '▼';
             font-size: 12px;
@@ -50,6 +59,7 @@
             pointer-events: none;
         }
         
+        /* Remove default browser styling for selects */
         select {
             appearance: none;
             width: 100%;
@@ -60,10 +70,12 @@
             cursor: pointer;
         }
         
+        /* Container for prediction reasoning section */
         .prediction-reasoning {
             margin-top: 20px;
         }
         
+        /* Styling for individual reasoning items */
         .reasoning-item {
             margin-bottom: 12px;
             padding-left: 24px;
@@ -75,6 +87,7 @@
             width: 100%;
         }
         
+        /* Bullet point for reasoning items */
         .reasoning-item:before {
             content: "•";
             position: absolute;
@@ -83,6 +96,7 @@
             font-weight: bold;
         }
         
+        /* Styling for reasoning labels */
         .reasoning-label {
             font-weight: 700;
             color: #2c3e50;
@@ -91,6 +105,7 @@
             white-space: nowrap;
         }
         
+        /* Styling for reasoning values */
         .reasoning-value {
             color: #34495e;
             flex: 1;
@@ -100,6 +115,7 @@
             white-space: normal;
         }
         
+        /* Container for confidence bar */
         .confidence-container {
             width: 100%;
             background-color: #f0f0f0;
@@ -107,6 +123,7 @@
             overflow: hidden;
         }
         
+        /* Flex container for player name and confidence value */
         .player-info {
             display: flex;
             justify-content: space-between;
@@ -115,11 +132,13 @@
             margin-bottom: 8px;
         }
         
+        /* Styling for numeric confidence value */
         .confidence-value {
             margin-left: 16px;
             white-space: nowrap;
         }
         
+        /* Main predictions container */
         #predictions {
             width: 100%;
             max-width: 800px;
@@ -127,21 +146,25 @@
             padding: 20px;
         }
         
+        /* Container wrapper for predictions */
         .prediction-container {
             width: 100%;
             margin: 0 auto;
         }
         
+        /* Styling for longer text in reasoning */
         .reasoning-value.long-text {
             padding-top: 4px;
             padding-bottom: 4px;
         }
         
+        /* Styling for injured player display */
         .player-injured {
             color: #dc3545;
             text-decoration: line-through;
         }
         
+        /* Injury notification badge */
         .injury-badge {
             background-color: #dc3545;
             color: white;
@@ -151,6 +174,7 @@
             margin-left: 5px;
         }
         
+        /* Injury info alert box */
         .injury-info {
             margin-top: 10px;
             padding: 8px;
@@ -165,15 +189,19 @@
     <div class="container">
         <h1 class="mb-4">NBA Lineup Predictor (2007-2015)</h1>
         
+        <!-- Navigation bar -->
         <nav class="navbar navbar-expand-lg navbar-light bg-light">
           <div class="container-fluid">
+            <!-- Brand logo linking to home -->
             <a class="navbar-brand" href="/">NBA Lineup Predictor</a>
+            <!-- Mobile-responsive navigation toggle -->
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
               <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
               <ul class="navbar-nav">
                 <li class="nav-item">
+                  <!-- Link to evaluation results page -->
                   <a class="nav-link" href="/evaluation">View Evaluation Results</a>
                 </li>
               </ul>
@@ -183,11 +211,12 @@
         
         <div class="row">
             <div class="col-md-6">
-                <!-- Season Selection -->
+                <!-- Season Selection Section -->
                 <div class="team-section">
                     <div class="form-group mb-3">
                         <label for="season">Select Season:</label>
                         <div class="select-wrapper">
+                            <!-- Dropdown for season selection with event handler -->
                             <select class="form-control" id="season" onchange="updateTeams()">
                                 <option value="">Select a season...</option>
                                 <option value="2007">2007-08</option>
@@ -204,12 +233,13 @@
                     </div>
                 </div>
 
-                <!-- Home Team Section -->
+                <!-- Home Team Selection Section -->
                 <div class="team-section">
                     <h3>Home Team</h3>
                     <div class="form-group mb-3">
                         <label for="home_team">Select Home Team:</label>
                         <div class="select-wrapper">
+                            <!-- Dropdown for home team with event handler -->
                             <select class="form-control" id="home_team" onchange="getHomePlayers()">
                                 <option value="">Select a team...</option>
                             </select>
@@ -218,6 +248,7 @@
                     
                     <div class="form-group mb-3">
                         <label>Select 4 Home Players:</label>
+                        <!-- Four dropdowns for home team player selection -->
                         <div class="select-wrapper">
                             <select class="form-control" id="home_player1"></select>
                         </div>
@@ -233,12 +264,13 @@
                     </div>
                 </div>
                 
-                <!-- Away Team Section -->
+                <!-- Away Team Selection Section -->
                 <div class="team-section">
                     <h3>Away Team</h3>
                     <div class="form-group mb-3">
                         <label for="away_team">Select Away Team:</label>
                         <div class="select-wrapper">
+                            <!-- Dropdown for away team with event handler -->
                             <select class="form-control" id="away_team" onchange="getAwayPlayers()">
                                 <option value="">Select a team...</option>
                             </select>
@@ -247,6 +279,7 @@
                     
                     <div class="form-group mb-3">
                         <label>Select 5 Away Players:</label>
+                        <!-- Five dropdowns for away team player selection -->
                         <div class="select-wrapper">
                             <select class="form-control" id="away_player1"></select>
                         </div>
@@ -265,14 +298,17 @@
                     </div>
                 </div>
                 
+                <!-- Game Time Input -->
                 <div class="form-group mb-3">
                     <label for="gameTime">Game Time (minutes):</label>
                     <input type="number" class="form-control" id="gameTime" min="0" max="48" value="0">
                 </div>
                 
+                <!-- Prediction Button -->
                 <button class="btn btn-primary" onclick="predict()">Predict Fifth Player</button>
             </div>
             
+            <!-- Prediction Results Container (initially hidden) -->
             <div class="col-md-6">
                 <div id="predictions" style="display: none;">
                     <div class="prediction-container">
@@ -286,6 +322,7 @@
         </div>
     </div>
 
+    <!-- Injury Information Alert (initially hidden) -->
     <div id="injuryInfo" class="injury-info" style="display: none;">
         <strong>Note:</strong> Some players are unavailable due to injuries and won't appear in the dropdown.
     </div>
@@ -297,7 +334,7 @@
             if (!season) return;
             
             try {
-                // Get teams for the selected season
+                // Fetch teams for the selected season
                 const response = await fetch(`/get_teams/${season}`);
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
@@ -323,88 +360,57 @@
                     option.textContent = team;
                     awayTeamSelect.appendChild(option);
                 });
-                
-                // Clear player selections
-                clearPlayerSelections();
-                
             } catch (error) {
-                console.error('Error updating teams:', error);
+                console.error('Error fetching teams:', error);
             }
         }
-
-        // Function to clear player selections
-        function clearPlayerSelections() {
-            // Clear home players
-            for (let i = 1; i <= 4; i++) {
-                const select = document.getElementById(`home_player${i}`);
-                if (select) {
-                    select.innerHTML = '<option value="">Select a player...</option>';
-                }
-            }
+        
+        // Function to update player dropdowns when one is changed
+        function updatePlayerDropdowns(selects, allPlayers, changedSelect = null) {
+            // Get currently selected players
+            const selectedPlayers = Array.from(selects)
+                .map(s => s.value)
+                .filter(Boolean);
             
-            // Clear away players
-            for (let i = 1; i <= 5; i++) {
-                const select = document.getElementById(`away_player${i}`);
-                if (select) {
-                    select.innerHTML = '<option value="">Select a player...</option>';
-                }
-            }
-        }
-
-        // Add event listener for season change
-        document.addEventListener('DOMContentLoaded', () => {
-            const seasonSelect = document.getElementById('season');
-            seasonSelect.addEventListener('change', updateTeams);
-            
-            // Initial load if season is pre-selected
-            if (seasonSelect.value) {
-                updateTeams();
-            }
-        });
-
-        // Keep our new player selection logic
-        function updatePlayerDropdowns(playerSelects, allPlayers, changedSelect = null) {
-            // Get all currently selected players
-            const selectedPlayers = new Set();
-            playerSelects.forEach(select => {
-                if (select.value && select !== changedSelect) {
-                    selectedPlayers.add(select.value);
-                }
-            });
-
-            // Update each dropdown
-            playerSelects.forEach(select => {
+            // For each select element
+            selects.forEach(select => {
+                // Skip the select that was just changed
+                if (select === changedSelect) return;
+                
+                // Store current selection
                 const currentValue = select.value;
                 
-                // If this is the dropdown that changed, keep its value
-                if (select === changedSelect) {
-                    selectedPlayers.add(currentValue);
+                // Remove all options except the placeholder
+                while (select.options.length > 1) {
+                    select.remove(1);
                 }
                 
-                // Create new options
-                const options = ['<option value="">Select a player...</option>`'];
-                
+                // Add available player options
                 allPlayers.forEach(player => {
-                    // Only add player if it's either:
-                    // 1. The currently selected player for this dropdown, or
-                    // 2. Not selected in any other dropdown
-                    if (player === currentValue || !selectedPlayers.has(player)) {
-                        options.push(`<option value="${player}" 
-                            ${player === currentValue ? 'selected' : ''}>${player}</option>`);
+                    // Don't add already selected players (except the current value)
+                    if (player === currentValue || !selectedPlayers.includes(player)) {
+                        const option = document.createElement('option');
+                        option.value = player;
+                        option.textContent = player;
+                        select.appendChild(option);
                     }
                 });
                 
-                // Update dropdown options
-                select.innerHTML = options.join('');
+                // If current value is valid, select it again
+                if (currentValue) {
+                    select.value = currentValue;
+                }
             });
         }
-
+        
+        // Function to get players for home team
         async function getHomePlayers() {
             const season = document.getElementById('season').value;
             const team = document.getElementById('home_team').value;
             if (!season || !team) return;
             
             try {
+                // Fetch players for selected team/season
                 const response = await fetch(`/get_players/${season}/${team}`);
                 const players = await response.json();
                 
@@ -452,12 +458,14 @@
             }
         }
         
+        // Function to get players for away team
         async function getAwayPlayers() {
             const season = document.getElementById('season').value;
             const team = document.getElementById('away_team').value;
             if (!season || !team) return;
             
             try {
+                // Fetch players for selected team/season
                 const response = await fetch(`/get_players/${season}/${team}`);
                 const players = await response.json();
                 
@@ -505,6 +513,7 @@
             }
         }
         
+        // Function to make prediction based on selections
         async function predict() {
             const season = document.getElementById('season').value;
             const home_team = document.getElementById('home_team').value;
@@ -524,6 +533,7 @@
             ];
             const gameTime = document.getElementById('gameTime').value;
             
+            // Validate all fields are completed
             if (!season || !home_team || !away_team || 
                 home_players.includes('') || away_players.includes('') || !gameTime) {
                 alert('Please fill in all fields');
@@ -535,6 +545,7 @@
                     season, home_team, away_team, home_players, away_players, gameTime
                 });
                 
+                // Send prediction request to server
                 const response = await fetch('/predict', {
                     method: 'POST',
                     headers: {
@@ -558,9 +569,11 @@
                 const result = await response.json();
                 console.log('Received prediction result:', result);
                 
+                // Show prediction results section
                 const predictionsDiv = document.getElementById('predictions');
                 predictionsDiv.style.display = 'block';
                 
+                // Populate prediction results
                 const predictionResults = document.getElementById('predictionResults');
                 if (result.predictions && result.predictions.length > 0) {
                     predictionResults.innerHTML = result.predictions
@@ -583,6 +596,7 @@
                     predictionResults.innerHTML = '<p>No predictions available</p>';
                 }
                 
+                // Populate reasoning section
                 const reasoningDiv = document.getElementById('reasoning');
                 if (result.reasoning) {
                     const reasoningLines = result.reasoning.split('\n').filter(line => line.trim());
@@ -619,6 +633,7 @@
             }
         }
 
+        // Function to load players for a team (JQuery implementation)
         function loadPlayersForTeam(teamName, type) {
             if (!teamName) return;
             

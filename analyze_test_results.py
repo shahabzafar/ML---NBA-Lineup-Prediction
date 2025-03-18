@@ -95,7 +95,7 @@ def analyze_test_results():
     print(f"Model knows {len(known_players)} unique players")
     
     results = []
-    errors = []
+    errors = {"no_prediction": 0, "insufficient_players": 0, "unseen_player": 0, "unknown_label": 0}
     total = len(test_df)
     
     print(f"\nAnalyzing {total} test cases...")
@@ -110,30 +110,16 @@ def analyze_test_results():
         true_label = labels_df.iloc[i][label_column]
         
         # Skip cases with unknown labels
-        if true_label == '?' or not isinstance(true_label, str):
-            errors.append({
-                'id': i,
-                'error_type': 'unknown_label',
-                'season': season,
-                'home_team': home_team,
-                'away_team': away_team,
-                'label': str(true_label)
-            })
+        if true_label == '?' or not isinstance(true_label, str) or pd.isna(true_label):
+            errors["unknown_label"] += 1
             continue
         
         # Skip if true player isn't in our training data
         if true_label not in known_players:
-            errors.append({
-                'id': i,
-                'error_type': 'unseen_player',
-                'season': season,
-                'home_team': home_team,
-                'away_team': away_team,
-                'label': true_label
-            })
+            errors["unseen_player"] += 1
             continue
         
-        # Get players for prediction
+        # Get home players (excluding the removed player)
         home_players = []
         for j in range(5):
             col = f'home_{j}'
@@ -146,6 +132,7 @@ def analyze_test_results():
                 if len(home_players) >= 4:  # Only need 4 players
                     break
         
+        # Get away players
         away_players = []
         for j in range(5):
             col = f'away_{j}'
@@ -157,17 +144,12 @@ def analyze_test_results():
                     away_players.append(row[col])
         
         # Skip if we don't have enough players
-        if len(home_players) < 4 or len(away_players) < 1:  # Only need 1 away player minimum
-            errors.append({
-                'id': i,
-                'error_type': 'insufficient_players',
-                'season': season,
-                'home_team': home_team,
-                'away_team': away_team,
-                'home_players_found': len(home_players),
-                'away_players_found': len(away_players)
-            })
+        if len(home_players) < 4:
+            errors["insufficient_players"] += 1
             continue
+            
+        # Allow prediction with limited away players if needed
+        away_players = away_players[:min(5, len(away_players))]
         
         # Make prediction with error handling
         try:
@@ -176,20 +158,14 @@ def analyze_test_results():
                 season=season,
                 home_team=home_team,
                 away_team=away_team,
-                current_players=home_players[:4],  # Use first 4 players
-                away_players=away_players[:min(5, len(away_players))],  # Use up to 5 players
+                current_players=home_players,
+                away_players=away_players,
                 game_time=game_time
             )
             
             # No prediction made
             if not predictions:
-                errors.append({
-                    'id': i,
-                    'error_type': 'no_prediction',
-                    'season': season,
-                    'home_team': home_team,
-                    'away_team': away_team
-                })
+                errors["no_prediction"] += 1
                 continue
             
             # Get top prediction
@@ -210,33 +186,16 @@ def analyze_test_results():
             results.append(result)
             
         except Exception as e:
-            errors.append({
-                'id': i,
-                'error_type': 'prediction_error',
-                'season': season,
-                'home_team': home_team,
-                'away_team': away_team,
-                'error': str(e)
-            })
+            errors["no_prediction"] += 1
+            continue
     
+    # Print error stats
+    print("\nError types:")
+    for error_type, count in errors.items():
+        print(f"  {error_type}: {count}")
+            
     # Convert to DataFrame
     results_df = pd.DataFrame(results) if results else pd.DataFrame()
-    errors_df = pd.DataFrame(errors) if errors else pd.DataFrame()
-    
-    # Save detailed results
-    output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'evaluation')
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-    
-    if not results_df.empty:
-        results_df.to_csv(os.path.join(output_dir, 'detailed_test_results.csv'), index=False)
-    
-    if not errors_df.empty:
-        errors_df.to_csv(os.path.join(output_dir, 'test_errors.csv'), index=False)
-        print(f"\nErrors encountered in {len(errors_df)} test cases")
-        print(f"Error types:")
-        for error_type, count in errors_df['error_type'].value_counts().items():
-            print(f"  {error_type}: {count}")
     
     # Print summary statistics
     if not results_df.empty:
@@ -249,13 +208,20 @@ def analyze_test_results():
         print(f"Correct predictions: {correct_predictions}")
         print(f"Accuracy: {accuracy:.2f}%")
         
+        # Add this debug information to help identify the discrepancy
+        print(f"\nDEBUG - Data file information:")
+        print(f"Full dataset rows: {total_predictions}")
+        print(f"Number of True values in is_correct: {results_df['is_correct'].sum()}")
+        print(f"Number of False values in is_correct: {(~results_df['is_correct']).sum()}")
+        print(f"Accuracy calculated from this file: {results_df['is_correct'].mean() * 100:.2f}%")
+        
         # Print accuracy by season
         if 'season' in results_df.columns:
             print("\nAccuracy by Season:")
-            season_accuracy = results_df.groupby('season')['is_correct'].agg(['mean', 'count'])
+            season_accuracy = results_df.groupby('season')['is_correct'].agg(['mean', 'count', 'sum'])
             season_accuracy['mean'] = season_accuracy['mean'] * 100
             for season, row in season_accuracy.iterrows():
-                print(f"  {season}: {row['mean']:.2f}% ({row['count']} predictions)")
+                print(f"  {season}: {row['mean']:.2f}% ({row['sum']}/{row['count']} correct)")
         
         # Print top 5 correct predictions with highest confidence
         if not results_df[results_df['is_correct']].empty:
@@ -288,17 +254,14 @@ def analyze_test_results():
         # Save a more readable version of results
         readable_results = results_df[['id', 'season', 'home_team', 'away_team', 'true_player', 
                                       'predicted_player', 'confidence', 'is_correct']]
-        readable_results.to_csv(os.path.join(output_dir, 'readable_test_results.csv'), index=False)
+        readable_results.to_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'evaluation', 'readable_test_results.csv'), index=False)
         
-        print(f"\nDetailed results saved to: {os.path.join(output_dir, 'detailed_test_results.csv')}")
-        print(f"Readable results saved to: {os.path.join(output_dir, 'readable_test_results.csv')}")
+        print(f"\nDetailed results saved to: {os.path.join(os.path.dirname(os.path.abspath(__file__)), 'evaluation', 'detailed_test_results.csv')}")
+        print(f"Readable results saved to: {os.path.join(os.path.dirname(os.path.abspath(__file__)), 'evaluation', 'readable_test_results.csv')}")
     else:
         print("\nNo valid predictions could be made on the test data.")
     
-    if not errors_df.empty:
-        print(f"Error logs saved to: {os.path.join(output_dir, 'test_errors.csv')}")
-    
-    return results_df, errors_df
+    return results_df, errors
 
 if __name__ == "__main__":
-    results_df, errors_df = analyze_test_results() 
+    results_df, errors = analyze_test_results() 
