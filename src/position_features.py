@@ -99,10 +99,10 @@ class PositionFeatureGenerator:
         df = df.copy()
         
         # Calculate position counts for home team lineups
-            df['num_guards'] = 0
-            df['num_forwards'] = 0
-            df['num_centers'] = 0
-            
+        df['num_guards'] = 0
+        df['num_forwards'] = 0
+        df['num_centers'] = 0
+        
         # Process each home player column
         for i in range(5):
             col = f'home_{i}'

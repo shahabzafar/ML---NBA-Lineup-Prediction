@@ -239,14 +239,14 @@ class ChemistryAnalyzer:
             # Guards
             if any(name in player_lower for name in ['paul', 'parker', 'nash', 'curry', 'irving', 'wall', 'lillard',
                                                  'rose', 'westbrook', 'rondo', 'kidd', 'wade', 'harden', 'ellis']):
-            return 'G'
+                return 'G'
             # Centers    
             elif any(name in player_lower for name in ['howard', 'bynum', 'gasol', 'hibbert', 'jordan', 'noah', 
                                                    'cousins', 'chandler', 'jefferson', 'lopez', 'gortat']):
-            return 'C'
+                return 'C'
             # Forwards
-        else:
-            return 'F'  # Default to Forward
+            else:
+                return 'F'  # Default to Forward
     
     def update_chemistry(self, player1: str, player2: str, score: float):
         """Update chemistry score for a pair of players"""
@@ -304,7 +304,7 @@ class ChemistryAnalyzer:
                     continue
                     
                 # Calculate chemistry score
-            chemistry_score = self.calculate_chemistry(home_players)
+                chemistry_score = self.calculate_chemistry(home_players)
                 df.iloc[idx, df.columns.get_loc('chemistry_score')] = chemistry_score
         
         # Fill remaining rows with average chemistry
