@@ -4,6 +4,8 @@ import os
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 import sys
+import glob
+import json
 
 # Add the project root to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -216,6 +218,38 @@ def evaluate_model(predictor, test_df, labels_df):
     
     return results_df
 
+def load_season_test_results():
+    """Load results from seasonal testing"""
+    print("Loading seasonal test results...")
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(current_dir)
+    
+    # Find all season result files
+    result_files = glob.glob(os.path.join(project_root, "season_*_results.csv"))
+    result_files.append(os.path.join(project_root, "all_seasons_results.csv"))
+    
+    season_results = {}
+    all_seasons_df = None
+    
+    for file_path in result_files:
+        if os.path.exists(file_path):
+            filename = os.path.basename(file_path)
+            if filename == "all_seasons_results.csv":
+                all_seasons_df = pd.read_csv(file_path)
+                season_results['all'] = all_seasons_df
+                print(f"Loaded all seasons combined results: {len(all_seasons_df)} predictions")
+            else:
+                # Extract season from filename
+                season = filename.replace("season_", "").replace("_results.csv", "")
+                season_df = pd.read_csv(file_path)
+                season_results[season] = season_df
+                print(f"Loaded {season} season results: {len(season_df)} predictions")
+    
+    if not season_results:
+        print("No season test results found")
+    
+    return season_results
+
 def analyze_results(results_df):
     """Analyze evaluation results with more detailed metrics"""
     if len(results_df) == 0:
@@ -234,38 +268,44 @@ def analyze_results(results_df):
     
     # Calculate accuracy broken down by season
     # This helps identify which seasons the model performs better or worse on
-    season_accuracy = results_df.groupby('season')['is_correct'].agg(['mean', 'count', 'sum'])
-    season_accuracy['mean'] = season_accuracy['mean'] * 100
+    if 'season' in results_df.columns:
+        season_accuracy = results_df.groupby('season')['is_correct'].agg(['mean', 'count', 'sum'])
+        season_accuracy['mean'] = season_accuracy['mean'] * 100
+        
+        print("\nAccuracy by season:")
+        for season, row in season_accuracy.iterrows():
+            print(f"  {season}: {row['mean']:.2f}% ({row['sum']}/{row['count']} correct)")
     
-    print("\nAccuracy by season:")
-    for season, row in season_accuracy.iterrows():
-        print(f"  {season}: {row['mean']:.2f}% ({row['sum']}/{row['count']} correct)")
-    
-    # Analyze distribution of test cases across seasons
-    matches_per_year = results_df['season'].value_counts().sort_index()
-    avg_matches = matches_per_year.mean()
-    
-    print("\nMatches per year in test dataset:")
-    for year, count in matches_per_year.items():
-        print(f"  {year}: {count}")
-    
-    print(f"\nAverage number of matches across the dataset: {avg_matches:.2f}")
+        # Analyze distribution of test cases across seasons
+        matches_per_year = results_df['season'].value_counts().sort_index()
+        avg_matches = matches_per_year.mean()
+        
+        print("\nMatches per year in test dataset:")
+        for year, count in matches_per_year.items():
+            print(f"  {year}: {count}")
+        
+        print(f"\nAverage number of matches across the dataset: {avg_matches:.2f}")
     
     # Display high-confidence correct predictions
     if not results_df[results_df['is_correct']].empty:
         print("\nTop 5 Correct Predictions (Highest Confidence):")
         top_correct = results_df[results_df['is_correct']].sort_values('confidence', ascending=False).head(5)
         for _, row in top_correct.iterrows():
-            print(f"  {row['true_player']} (Season: {row['season']}, {row['home_team']} vs {row['away_team']}, Confidence: {row['confidence']:.2f})")
+            # Check which columns are available
+            if 'season' in row and 'home_team' in row and 'away_team' in row:
+                print(f"  {row['true_player']} (Season: {row['season']}, {row['home_team']} vs {row['away_team']}, Confidence: {row['confidence']:.2f})")
+            else:
+                print(f"  {row['true_player']} (Confidence: {row['confidence']:.2f})")
     
-    # Create visualization for matches per year
-    plt.figure(figsize=(10, 6))
-    plt.bar(matches_per_year.index.astype(str), matches_per_year.values)
-    plt.title('Number of Matches per Year in Test Dataset')
-    plt.xlabel('Year')
-    plt.ylabel('Number of Matches')
-    plt.xticks(rotation=45)
-    plt.tight_layout()
+    # Create visualization for matches per year if season column exists
+    if 'season' in results_df.columns:
+        plt.figure(figsize=(10, 6))
+        plt.bar(matches_per_year.index.astype(str), matches_per_year.values)
+        plt.title('Number of Matches per Year in Test Dataset')
+        plt.xlabel('Year')
+        plt.ylabel('Number of Matches')
+        plt.xticks(rotation=45)
+        plt.tight_layout()
     
     # Set up directory for saving evaluation outputs
     current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -276,25 +316,26 @@ def analyze_results(results_df):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     
-    # Save matches per year visualization
-    plt.savefig(os.path.join(output_dir, 'matches_per_year.png'))
-    print(f"\nVisualization saved to {output_dir}/matches_per_year.png")
+    # Save matches per year visualization if season column exists
+    if 'season' in results_df.columns:
+        plt.savefig(os.path.join(output_dir, 'matches_per_year.png'))
+        print(f"\nVisualization saved to {output_dir}/matches_per_year.png")
     
-    # Create and save accuracy by season visualization
-    plt.figure(figsize=(10, 6))
-    seasons = season_accuracy.index.astype(str)
-    accuracies = season_accuracy['mean'].values
-    
-    plt.bar(seasons, accuracies)
-    plt.title('Accuracy by Season')
-    plt.xlabel('Season')
-    plt.ylabel('Accuracy (%)')
-    plt.xticks(rotation=45)
-    plt.ylim(0, 100)  # Set y-axis from 0-100%
-    plt.tight_layout()
-    
-    plt.savefig(os.path.join(output_dir, 'accuracy_by_season.png'))
-    print(f"Second visualization saved to {output_dir}/accuracy_by_season.png")
+        # Create and save accuracy by season visualization
+        plt.figure(figsize=(10, 6))
+        seasons = season_accuracy.index.astype(str)
+        accuracies = season_accuracy['mean'].values
+        
+        plt.bar(seasons, accuracies)
+        plt.title('Accuracy by Season')
+        plt.xlabel('Season')
+        plt.ylabel('Accuracy (%)')
+        plt.xticks(rotation=45)
+        plt.ylim(0, 100)  # Set y-axis from 0-100%
+        plt.tight_layout()
+        
+        plt.savefig(os.path.join(output_dir, 'accuracy_by_season.png'))
+        print(f"Second visualization saved to {output_dir}/accuracy_by_season.png")
     
     # Save detailed results to CSV for further analysis
     results_df.to_csv(os.path.join(output_dir, 'evaluation_results.csv'), index=False)
@@ -308,33 +349,185 @@ def analyze_results(results_df):
     summary_df.to_csv(os.path.join(output_dir, 'evaluation_summary.csv'), index=False)
     print(f"Summary saved to {output_dir}/evaluation_summary.csv")
     
+    # Save JSON files for the web interface
+    if 'season' in results_df.columns:
+        # Save matches per year data as JSON
+        matches_per_year_dict = {str(year): int(count) for year, count in matches_per_year.items()}
+        with open(os.path.join(output_dir, 'matches_per_year.json'), 'w') as f:
+            json.dump(matches_per_year_dict, f)
+            
+        # Save accuracy by season data as JSON
+        season_accuracy_dict = {str(season): float(row['mean']) for season, row in season_accuracy.iterrows()}
+        with open(os.path.join(output_dir, 'accuracy_by_season.json'), 'w') as f:
+            json.dump(season_accuracy_dict, f)
+    
     # Compile key metrics into a dictionary for return value
     metrics = {
-        'matches_per_year': matches_per_year.to_dict(),
-        'average_matches': avg_matches,
         'overall_accuracy': accuracy,
         'total_predictions': total_predictions,
         'correct_predictions': correct_predictions,
-        'season_accuracy': season_accuracy['mean'].to_dict()
     }
     
+    # Add season-specific metrics if available
+    if 'season' in results_df.columns:
+        metrics.update({
+            'matches_per_year': matches_per_year.to_dict(),
+            'average_matches': avg_matches,
+            'season_accuracy': season_accuracy['mean'].to_dict()
+        })
+    
     return metrics
+
+def analyze_season_results(season_results):
+    """Analyze results from season-by-season testing"""
+    if not season_results:
+        print("No season test results to analyze.")
+        return {}
+    
+    # Set up directory for saving evaluation outputs
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(current_dir)
+    output_dir = os.path.join(project_root, 'evaluation')
+    
+    # Create output directory if it doesn't exist
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+        
+    # Calculate metrics for each season
+    season_metrics = {}
+    all_seasons_data = None
+    
+    for season, df in season_results.items():
+        # Calculate accuracy
+        accuracy = df['is_correct'].mean() * 100
+        correct_count = df['is_correct'].sum()
+        total_count = len(df)
+        
+        # Calculate position metrics if available
+        position_accuracy = {}
+        if 'true_position' in df.columns and 'pred_position' in df.columns:
+            # Position-level accuracy
+            for pos in ['G', 'F', 'C']:
+                pos_df = df[df['true_position'] == pos]
+                if len(pos_df) > 0:
+                    pos_acc = pos_df['is_correct'].mean() * 100
+                    position_accuracy[pos] = pos_acc
+            
+            # Position prediction accuracy
+            pos_match = (df['true_position'] == df['pred_position']).mean() * 100
+            position_accuracy['match'] = pos_match
+        
+        # Store metrics for this season
+        season_metrics[season] = {
+            'accuracy': accuracy,
+            'total_predictions': total_count,
+            'correct_predictions': correct_count,
+            'position_accuracy': position_accuracy
+        }
+        
+        # Save data for all seasons combined
+        if season == 'all':
+            all_seasons_data = df
+    
+    # Create accuracy by season visualization
+    plt.figure(figsize=(10, 6))
+    seasons = [s for s in season_metrics.keys() if s != 'all']
+    accuracies = [season_metrics[s]['accuracy'] for s in seasons]
+    
+    # Add all seasons if available
+    if 'all' in season_metrics:
+        seasons.append('All Combined')
+        accuracies.append(season_metrics['all']['accuracy'])
+    
+    plt.bar(seasons, accuracies)
+    plt.title('Accuracy by Season (Season Test)')
+    plt.xlabel('Season')
+    plt.ylabel('Accuracy (%)')
+    plt.xticks(rotation=45)
+    plt.ylim(0, 100)  # Set y-axis from 0-100%
+    plt.axhline(y=70, color='r', linestyle='--', label='Target (70%)')
+    plt.legend()
+    plt.tight_layout()
+    
+    plt.savefig(os.path.join(output_dir, 'season_test_accuracy.png'))
+    print(f"Season test visualization saved to {output_dir}/season_test_accuracy.png")
+    
+    # Save summary metrics for season testing
+    summary_df = pd.DataFrame([
+        {'season': s, 
+         'accuracy': m['accuracy'], 
+         'total': m['total_predictions'], 
+         'correct': m['correct_predictions']}
+        for s, m in season_metrics.items()
+    ])
+    
+    summary_df.to_csv(os.path.join(output_dir, 'season_test_summary.csv'), index=False)
+    print(f"Season test summary saved to {output_dir}/season_test_summary.csv")
+    
+    # Save JSON files for the web interface
+    # Convert metrics to JSON-serializable format
+    json_metrics = {}
+    for season, metrics in season_metrics.items():
+        json_metrics[str(season)] = {
+            'accuracy': float(metrics['accuracy']),
+            'total_predictions': int(metrics['total_predictions']),
+            'correct_predictions': int(metrics['correct_predictions'])
+        }
+        
+        # Add position accuracy if available
+        if metrics['position_accuracy']:
+            json_metrics[str(season)]['position_accuracy'] = {
+                k: float(v) for k, v in metrics['position_accuracy'].items()
+            }
+    
+    # Save season metrics as JSON
+    with open(os.path.join(output_dir, 'season_test_metrics.json'), 'w') as f:
+        json.dump(json_metrics, f)
+    
+    # Save season test chart data
+    chart_data = {
+        'seasons': seasons,
+        'accuracies': accuracies
+    }
+    with open(os.path.join(output_dir, 'season_test_chart.json'), 'w') as f:
+        json.dump(chart_data, f)
+    
+    return {
+        'season_metrics': season_metrics,
+        'all_seasons_data': all_seasons_data
+    }
 
 def main():
     """Main evaluation function"""
     # Load and prepare model
-    predictor, training_df = load_and_prepare_model()
+    try:
+        predictor, training_df = load_and_prepare_model()
+        
+        # Load test data
+        test_df, labels_df = load_test_data()
+        
+        # Evaluate model
+        results_df = evaluate_model(predictor, test_df, labels_df)
+        
+        # Analyze results
+        metrics = analyze_results(results_df)
+    except Exception as e:
+        print(f"Error in standard evaluation: {str(e)}")
+        results_df = pd.DataFrame()
+        metrics = {}
     
-    # Load test data
-    test_df, labels_df = load_test_data()
+    # Load and analyze season test results
+    season_results = load_season_test_results()
+    season_metrics = analyze_season_results(season_results)
     
-    # Evaluate model
-    results_df = evaluate_model(predictor, test_df, labels_df)
+    # Combine metrics for return
+    combined_metrics = {
+        'standard_metrics': metrics,
+        'season_metrics': season_metrics.get('season_metrics', {}),
+        'all_seasons_data': season_metrics.get('all_seasons_data', None)
+    }
     
-    # Analyze results
-    metrics = analyze_results(results_df)
-    
-    return metrics
+    return combined_metrics
 
 if __name__ == "__main__":
     main() 

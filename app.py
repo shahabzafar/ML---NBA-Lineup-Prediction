@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, redirect
+from flask import Flask, render_template, request, jsonify, redirect, url_for
 from src.position_features import PositionFeatureGenerator
 from src.chemistry_analysis import ChemistryAnalyzer
 from src.time_analysis import TimeAnalyzer
@@ -11,6 +11,10 @@ import matplotlib
 matplotlib.use('Agg')  # Use Agg backend to avoid display issues
 import matplotlib.pyplot as plt
 import json
+import sys
+import glob
+import subprocess
+from datetime import datetime
 
 app = Flask(__name__)
 
@@ -230,56 +234,68 @@ def predict():
 
 @app.route('/evaluation')
 def evaluation():
-    # Load evaluation results if they exist
+    """Display evaluation results"""
+    # Set up paths to evaluation output files
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    evaluation_dir = os.path.join(current_dir, 'evaluation')
-    results_path = os.path.join(evaluation_dir, 'evaluation_results.csv')
+    eval_dir = os.path.join(current_dir, 'evaluation')
+    summary_path = os.path.join(eval_dir, 'evaluation_summary.csv')
     
-    if not os.path.exists(results_path):
-        # If results don't exist, run evaluation
-        from src.evaluate_test_data import main as evaluate_main
-        metrics = evaluate_main()
-    else:
-        # Load existing results
-        results_df = pd.read_csv(results_path)
-        
-        # Calculate overall accuracy
-        overall_accuracy = float(results_df['is_correct'].mean() * 100)
-        
-        # Count matches per year - convert to standard Python types
-        matches_per_year = results_df['season'].value_counts().sort_index()
-        matches_dict = {int(year): int(count) for year, count in matches_per_year.items()}
-        avg_matches = float(matches_per_year.mean())
-        
-        # Calculate accuracy by season - convert to standard Python types
-        season_accuracy = results_df.groupby('season')['is_correct'].mean() * 100
-        accuracy_dict = {int(year): float(acc) for year, acc in season_accuracy.items()}
-        
-        metrics = {
-            'matches_per_year': matches_dict,
-            'average_matches': avg_matches,
-            'overall_accuracy': overall_accuracy,
-            'season_accuracy': accuracy_dict
-        }
+    # Default metrics
+    metrics = {
+        'overall_accuracy': 0,
+        'total_matches': 0,
+        'correct_predictions': 0,
+        'average_matches': 0,
+        'matches_per_year': {},
+    }
     
-    # Prepare data for charts - use native Python types
-    matches_per_year = metrics.get('matches_per_year', {})
-    matches_years = [str(y) for y in sorted(matches_per_year.keys())]
-    matches_counts = [int(matches_per_year.get(int(y), 0)) for y in matches_years]
+    # Check if evaluation results exist
+    if os.path.exists(summary_path):
+        # Load summary metrics
+        summary_df = pd.read_csv(summary_path)
+        metrics_dict = dict(zip(summary_df['metric'], summary_df['value']))
+        
+        metrics['overall_accuracy'] = metrics_dict.get('accuracy', 0)
+        metrics['total_matches'] = int(metrics_dict.get('total_predictions', 0))
+        metrics['correct_predictions'] = int(metrics_dict.get('correct_predictions', 0))
+        
+        # Load matches per year data
+        matches_per_year_path = os.path.join(eval_dir, 'matches_per_year.json')
+        if os.path.exists(matches_per_year_path):
+            with open(matches_per_year_path, 'r') as f:
+                metrics['matches_per_year'] = json.load(f)
+            
+            if metrics['matches_per_year']:
+                metrics['average_matches'] = sum(metrics['matches_per_year'].values()) / len(metrics['matches_per_year'])
+                
+                # Format data for charts
+                matches_years = list(metrics['matches_per_year'].keys())
+                matches_counts = [metrics['matches_per_year'][year] for year in matches_years]
+                
+                metrics['matches_years'] = matches_years
+                metrics['matches_counts'] = matches_counts
+        
+        # Load accuracy by season data
+        accuracy_by_season_path = os.path.join(eval_dir, 'accuracy_by_season.json')
+        if os.path.exists(accuracy_by_season_path):
+            with open(accuracy_by_season_path, 'r') as f:
+                season_accuracy = json.load(f)
+            
+            if season_accuracy:
+                # Format data for charts
+                accuracy_years = list(season_accuracy.keys())
+                accuracy_values = [season_accuracy[year] for year in accuracy_years]
+                
+                metrics['accuracy_years'] = accuracy_years
+                metrics['accuracy_values'] = accuracy_values
     
-    season_accuracy = metrics.get('season_accuracy', {})
-    accuracy_years = [str(y) for y in sorted(season_accuracy.keys())]
-    accuracy_values = [float(season_accuracy.get(int(y), 0)) for y in accuracy_years]
+    # Load season test results
+    season_test_data = load_season_test_results()
     
-    return render_template('evaluation.html',
-                          overall_accuracy=float(metrics.get('overall_accuracy', 0)),
-                          total_matches=int(sum(matches_per_year.values())),
-                          average_matches=float(metrics.get('average_matches', 0)),
-                          matches_per_year=matches_per_year,
-                          matches_years=matches_years,
-                          matches_counts=matches_counts,
-                          accuracy_years=accuracy_years,
-                          accuracy_values=accuracy_values)
+    # Combine all metrics
+    template_data = {**metrics, **season_test_data}
+    
+    return render_template('evaluation.html', **template_data)
 
 @app.route('/get_team_players')
 def get_team_players():
@@ -317,11 +333,115 @@ def get_team_players():
 @app.route('/run_evaluation')
 def run_evaluation_route():
     try:
-        from src.evaluate_test_data import main as evaluate_main
-        metrics = evaluate_main()
-        return redirect('/evaluation')
+        subprocess.run(["python", "src/evaluate_test_data.py"], check=True)
+        return redirect(url_for('evaluation'))
     except Exception as e:
         return render_template('error.html', error=str(e))
+
+@app.route('/run_season_test')
+def run_season_test():
+    """Run the model evaluation script and redirect to evaluation page"""
+    try:
+        # Execute the season test script
+        subprocess.Popen(["python", "season_test.py"])
+        return "Model evaluation started. Please check the terminal for prompts and inputs. Refresh the evaluation page when complete."
+    except Exception as e:
+        return f"Error running model evaluation: {str(e)}"
+
+def load_season_test_results():
+    """Load results from seasonal testing"""
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    # Find all season result files
+    result_files = glob.glob(os.path.join(current_dir, "season_*_results.csv"))
+    all_seasons_file = os.path.join(current_dir, "all_seasons_results.csv")
+    
+    season_results = {}
+    all_seasons_data = None
+    position_accuracy = {}
+    has_position_data = False
+    
+    for file_path in result_files:
+        if os.path.exists(file_path):
+            filename = os.path.basename(file_path)
+            season = filename.replace("season_", "").replace("_results.csv", "")
+            season_df = pd.read_csv(file_path)
+            
+            # Calculate accuracy
+            accuracy = season_df['is_correct'].mean() * 100
+            correct_count = season_df['is_correct'].sum()
+            total_count = len(season_df)
+            
+            # Store metrics for this season
+            season_results[season] = {
+                'accuracy': accuracy,
+                'total_predictions': total_count,
+                'correct_predictions': correct_count
+            }
+            
+            # Check for position data
+            if 'true_position' in season_df.columns and 'pred_position' in season_df.columns:
+                has_position_data = True
+    
+    # Load all seasons combined data if available
+    if os.path.exists(all_seasons_file):
+        all_seasons_df = pd.read_csv(all_seasons_file)
+        accuracy = all_seasons_df['is_correct'].mean() * 100
+        correct_count = all_seasons_df['is_correct'].sum()
+        total_count = len(all_seasons_df)
+        
+        season_results['all'] = {
+            'accuracy': accuracy,
+            'total_predictions': total_count,
+            'correct_predictions': correct_count
+        }
+        
+        # Calculate position accuracy if available
+        if 'true_position' in all_seasons_df.columns and 'pred_position' in all_seasons_df.columns:
+            has_position_data = True
+            
+            # Position-level accuracy
+            for pos in ['G', 'F', 'C']:
+                pos_df = all_seasons_df[all_seasons_df['true_position'] == pos]
+                if len(pos_df) > 0:
+                    position_accuracy[pos] = pos_df['is_correct'].mean() * 100
+            
+            # Position match accuracy
+            position_match_accuracy = (all_seasons_df['true_position'] == all_seasons_df['pred_position']).mean() * 100
+    
+    season_test_data = {
+        'season_metrics': season_results,
+        'position_accuracy': position_accuracy,
+        'has_position_data': has_position_data
+    }
+    
+    if 'all' in season_results:
+        season_test_data['all_seasons_accuracy'] = season_results['all']['accuracy']
+        season_test_data['all_seasons_total'] = season_results['all']['total_predictions']
+        season_test_data['position_match_accuracy'] = position_match_accuracy if has_position_data else 0
+    
+    # Prepare data for charts
+    if season_results:
+        seasons = [s for s in season_results.keys() if s != 'all']
+        season_test_data['season_count'] = len(seasons)
+        
+        # Format data for chart
+        season_test_seasons = []
+        season_test_accuracies = []
+        
+        for s in sorted(seasons, key=lambda x: int(x) if x.isdigit() else float('inf')):
+            season_test_seasons.append(s)
+            season_test_accuracies.append(season_results[s]['accuracy'])
+            
+        # Add all seasons combined at the end if available
+        if 'all' in season_results:
+            season_test_seasons.append('All Combined')
+            season_test_accuracies.append(season_results['all']['accuracy'])
+            
+        season_test_data['season_test_seasons'] = season_test_seasons
+        season_test_data['season_test_accuracies'] = season_test_accuracies
+    
+    return season_test_data
 
 if __name__ == '__main__':
     app.run(debug=True) 
